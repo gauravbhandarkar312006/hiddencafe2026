@@ -91,6 +91,7 @@ AS $$
 DECLARE
     v_clean_name TEXT;
     v_clean_phone TEXT;
+    v_phone_digits TEXT;
     v_clean_time TEXT;
     v_clean_event TEXT;
     v_clean_message TEXT;
@@ -118,10 +119,16 @@ BEGIN
     IF NOT (trim(p_phone) ~ '^\+?[0-9\s\-]{10,20}$') THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid contact number format.');
     END IF;
-    -- Digits-only normalized phone for storage and rate-limiting
-    v_clean_phone := regexp_replace(trim(p_phone), '[^\+0-9]', '', 'g');
-    IF length(v_clean_phone) < 10 OR length(v_clean_phone) > 15 THEN
+    -- Extract digits-only to validate 10-15 digits regardless of punctuation
+    v_phone_digits := regexp_replace(trim(p_phone), '[^0-9]', '', 'g');
+    IF length(v_phone_digits) < 10 OR length(v_phone_digits) > 15 THEN
         RETURN jsonb_build_object('success', false, 'error', 'Phone number must contain between 10 and 15 digits.');
+    END IF;
+    -- Standardize stored phone: E.164 if '+' was provided, else digits
+    IF trim(p_phone) LIKE '+%' THEN
+        v_clean_phone := '+' || v_phone_digits;
+    ELSE
+        v_clean_phone := v_phone_digits;
     END IF;
 
     IF p_booking_date IS NULL THEN
@@ -177,9 +184,12 @@ BEGIN
 
     -- 2. IP Hash Validation & Rate Limiting (Requirement 1 & 4)
     -- When called via Edge Function, p_ip_hash is a server-derived salted hex hash.
-    -- If p_ip_hash is missing (e.g. unproxied local dev), IP rate limit is skipped and documented;
+    -- If p_ip_hash is missing (e.g. unproxied local dev), IP rate limit is skipped and logged;
     -- phone-based rate limiting is ALWAYS strictly enforced.
-    IF p_ip_hash IS NOT NULL AND p_ip_hash ~ '^[a-fA-F0-9]{32,64}$' THEN
+    IF p_ip_hash IS NOT NULL AND length(trim(p_ip_hash)) > 0 THEN
+        IF NOT (trim(p_ip_hash) ~ '^[a-fA-F0-9]{32,64}$') THEN
+            RETURN jsonb_build_object('success', false, 'error', 'Invalid IP hash format.');
+        END IF;
         v_clean_ip := lower(trim(p_ip_hash));
         -- Enforce IP-based rate limit: max 5 bookings per 10 minutes per IP hash
         v_ip_allowed := public.check_rate_limit('booking_ip:' || v_clean_ip, 5, 600);
@@ -190,20 +200,20 @@ BEGIN
         v_clean_ip := NULL;
     END IF;
 
-    -- Phone-based rate limiting: max 3 booking attempts per hour per phone
-    v_phone_allowed := public.check_rate_limit('booking_phone:' || v_clean_phone, 3, 3600);
+    -- Phone-based rate limiting: max 3 booking attempts per hour per normalized phone digits
+    v_phone_allowed := public.check_rate_limit('booking_phone:' || v_phone_digits, 3, 3600);
     IF NOT v_phone_allowed THEN
         RETURN jsonb_build_object('success', false, 'error', 'Multiple bookings detected for this phone. Please contact café staff directly.');
     END IF;
 
     -- 3. Concurrency-Safe Duplicate Booking Protection (Requirement 3 & 5)
-    -- Transactional advisory lock serialized by phone + date + slot
-    PERFORM pg_advisory_xact_lock(hashtext(v_clean_phone || ':' || p_booking_date::text || ':' || v_clean_time));
+    -- Transactional advisory lock serialized by phone digits + date + slot
+    PERFORM pg_advisory_xact_lock(hashtext(v_phone_digits || ':' || p_booking_date::text || ':' || v_clean_time));
 
     -- Check if an active booking exists for the same phone, date, and slot within 5 minutes
     SELECT id, status INTO v_existing_duplicate, v_existing_status
     FROM public.party_bookings
-    WHERE phone = v_clean_phone
+    WHERE (phone = v_clean_phone OR phone = v_phone_digits OR phone = '+' || v_phone_digits)
       AND booking_date = p_booking_date
       AND booking_time = v_clean_time
       AND status IN ('pending', 'confirmed')

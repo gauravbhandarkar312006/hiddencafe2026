@@ -117,6 +117,16 @@ ALTER TABLE public.staff_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.menu_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.party_bookings ENABLE ROW LEVEL SECURITY;
 
+-- Explicit Table Grants (Defense-in-depth):
+-- Public and anon have zero privileges on staff_roles and party_bookings.
+REVOKE ALL ON TABLE public.staff_roles FROM PUBLIC, anon;
+GRANT SELECT ON TABLE public.staff_roles TO authenticated;
+GRANT ALL ON TABLE public.staff_roles TO service_role;
+
+REVOKE ALL ON TABLE public.party_bookings FROM PUBLIC, anon;
+GRANT SELECT, UPDATE, DELETE ON TABLE public.party_bookings TO authenticated;
+GRANT ALL ON TABLE public.party_bookings TO service_role;
+
 -- 4. Policies for staff_roles
 -- Staff members can only view their own assigned role
 DROP POLICY IF EXISTS "Staff can read their own role" ON public.staff_roles;
