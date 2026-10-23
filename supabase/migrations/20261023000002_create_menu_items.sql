@@ -1,6 +1,6 @@
 -- ====================================================================
 -- Migration: 20261023000002_create_menu_items.sql
--- Description: Create menu_items table with category indexes & seed existing items
+-- Description: Create menu_items table with category indexes & seed 100% faithful menu items
 -- Reversible: DROP TABLE IF EXISTS public.menu_items CASCADE;
 -- ====================================================================
 
@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS public.menu_items (
     CONSTRAINT chk_menu_category_len CHECK (char_length(trim(category)) >= 1 AND char_length(category) <= 80),
     CONSTRAINT chk_menu_price_positive CHECK (price >= 0),
     CONSTRAINT chk_menu_size_price_len CHECK (size_price IS NULL OR char_length(size_price) <= 120),
-    CONSTRAINT chk_menu_note_len CHECK (note IS NULL OR char_length(note) <= 300)
+    CONSTRAINT chk_menu_note_len CHECK (note IS NULL OR char_length(note) <= 300),
+    CONSTRAINT uq_menu_item_name_category UNIQUE (name, category)
 );
 
 -- Query and sorting indexes
@@ -43,10 +44,10 @@ CREATE TRIGGER trg_menu_items_updated_at
 
 COMMENT ON TABLE public.menu_items IS 'Real café menu items with price, availability and category';
 
--- Seed existing menu items safely if empty
+-- Seed existing menu items safely if table is empty (never overwrites existing data)
 INSERT INTO public.menu_items (name, note, category, price, size_price, is_veg, is_spicy, is_famous, is_pick, sort_order)
 SELECT * FROM (VALUES
-  -- Mocktails
+  -- 1. Mocktails
   ('Mojito', 'mint, lime & soda fizz', 'mocktails', 148.00, NULL, true, false, false, true, 1),
   ('Blue Lagoon', 'curacao citrus splash', 'mocktails', 160.00, NULL, true, false, true, true, 2),
   ('Water Melon', 'fresh summer cooler', 'mocktails', 171.00, NULL, true, false, false, false, 3),
@@ -56,7 +57,7 @@ SELECT * FROM (VALUES
   ('Sparkling Grenadine', 'pomegranate berry sparkle', 'mocktails', 183.00, NULL, true, false, false, false, 7),
   ('Ice Tea', 'chilled lemon infused tea', 'mocktails', 137.00, NULL, true, false, false, false, 8),
 
-  -- Twisters & Fries
+  -- 2. Twisters & Fries
   ('Peri Peri Twisty', 'the iconic spiral potato', 'twisty-fries', 160.00, NULL, true, false, true, true, 1),
   ('Peri Peri with Cheese', 'spiral with cheese drizzle', 'twisty-fries', 183.00, NULL, true, false, false, true, 2),
   ('Peri Peri with Melted Cheese', 'molten cheese blanket', 'twisty-fries', 194.00, NULL, true, false, true, false, 3),
@@ -71,7 +72,7 @@ SELECT * FROM (VALUES
   ('Salty Fries', 'crisp classic salted', 'twisty-fries', 148.00, NULL, true, false, false, false, 12),
   ('Mayo Fries', 'creamy mayo drizzle', 'twisty-fries', 160.00, NULL, true, false, false, false, 13),
 
-  -- Pizzas & Pastas
+  -- 3. Pizzas & Pastas
   ('Hidden Café Special Pizza', 'chef''s signature secret toppings', 'pizza-pasta', 321.00, '8″ ₹321 • 11″ ₹482', true, false, true, true, 1),
   ('Paneer Tikka Pizza', 'smoky tikka chunks, onion, capsicum', 'pizza-pasta', 263.00, '8″ ₹263 • 11″ ₹436', true, true, false, true, 2),
   ('Peri Peri Paneer Pizza', 'spicy paneer & peri peri glaze', 'pizza-pasta', 286.00, '8″ ₹286 • 11″ ₹447', true, true, false, false, 3),
@@ -86,7 +87,7 @@ SELECT * FROM (VALUES
   ('White Sauce Pasta', 'mild herbed alfredo', 'pizza-pasta', 275.00, NULL, true, false, false, false, 12),
   ('Mac n Cheese', 'cheesy comfort classic', 'pizza-pasta', 240.00, NULL, true, false, false, false, 13),
 
-  -- Burgers & Sandwiches
+  -- 4. Burgers & Sandwiches
   ('Maharaja Burger', 'huge double patty with cheese', 'burgers-sandwiches', 229.00, NULL, true, false, true, true, 1),
   ('Smoky Tandoori Paneer Burger', 'marinated paneer steak', 'burgers-sandwiches', 217.00, NULL, true, true, false, false, 2),
   ('Cheesy Grilled Veg Burger', 'toasted bun with melted cheese', 'burgers-sandwiches', 183.00, NULL, true, false, false, true, 3),
@@ -100,7 +101,7 @@ SELECT * FROM (VALUES
   ('Sweet Corn Sandwich', 'sweet corn & creamy spread', 'burgers-sandwiches', 183.00, NULL, true, false, false, false, 11),
   ('Veg Sandwich', 'fresh vegetables & green chutney', 'burgers-sandwiches', 125.00, NULL, true, false, false, false, 12),
 
-  -- Chinese & Platters
+  -- 5. Chinese & Platters
   ('Paneer Lovers Platter', 'paneer chilly + coriander + dragon + schezwan', 'chinese-appetizers', 1034.00, NULL, true, false, true, true, 1),
   ('Chinese Combo Platter', 'manchurian + spring roll + fried rice + paneer chilly', 'chinese-appetizers', 804.00, NULL, true, false, true, true, 2),
   ('Paneer Sizzler Platter', 'steaming sizzler with sauce', 'chinese-appetizers', 332.00, NULL, true, false, true, false, 3),
@@ -116,7 +117,7 @@ SELECT * FROM (VALUES
   ('Spicy Schezwan Rice', 'aromatic rice in fiery chili oil', 'chinese-appetizers', 229.00, NULL, true, true, false, false, 13),
   ('Golden Fried Rice', 'garlic herbed fried rice', 'chinese-appetizers', 194.00, NULL, true, false, false, false, 14),
 
-  -- Momos, Maggie & Wraps
+  -- 6. Momos, Maggie & Wraps
   ('Tandoori Momos', 'charred in tandoori masala', 'maggie-momos-wraps', 206.00, NULL, true, false, true, true, 1),
   ('Chilly Momos', 'tossed in spicy schezwan gravy', 'maggie-momos-wraps', 275.00, NULL, true, true, false, false, 2),
   ('Veg Fried Momos', 'golden crispy dumplings', 'maggie-momos-wraps', 160.00, NULL, true, false, false, true, 3),
@@ -127,17 +128,34 @@ SELECT * FROM (VALUES
   ('Paneer Shorma Wrap', 'middle eastern herbed paneer', 'maggie-momos-wraps', 217.00, NULL, true, false, true, false, 8),
   ('Chilli Cheese Wrap', 'molten cheese and green chillies', 'maggie-momos-wraps', 206.00, NULL, true, true, false, false, 9),
   ('Paneer Schezwan Roll', 'spiced paneer rolled in paratha', 'maggie-momos-wraps', 183.00, NULL, true, false, false, false, 10),
+  ('Bombay Masala Wrap', 'potato masala & mint chutney', 'maggie-momos-wraps', 194.00, NULL, true, false, false, false, 11),
 
-  -- Desserts & Beverages
-  ('Sizzling Brownie with Ice Cream', 'warm walnut brownie on sizzler plate', 'desserts-beverages', 252.00, NULL, true, false, true, true, 1),
-  ('Brownie with Ice Cream', 'rich fudge brownie with vanilla scoop', 'desserts-beverages', 206.00, NULL, true, false, false, true, 2),
-  ('Cold Coffee with Crush', 'blended coffee with chocolate crush', 'desserts-beverages', 148.00, NULL, true, false, true, true, 3),
-  ('Hidden Café Special Cold Coffee', 'our signature thick creamy blend', 'desserts-beverages', 183.00, NULL, true, false, true, true, 4),
-  ('Cold Coffee with Ice Cream', 'topped with rich vanilla scoop', 'desserts-beverages', 171.00, NULL, true, false, false, false, 5),
-  ('Hot Chocolate', 'velvety melted Belgian chocolate', 'desserts-beverages', 171.00, NULL, true, false, true, false, 6),
-  ('Hot Coffee', 'freshly brewed steaming cappuccino', 'desserts-beverages', 114.00, NULL, true, false, false, false, 7),
-  ('KitKat Shake', 'creamy shake blended with KitKat', 'desserts-beverages', 217.00, NULL, true, false, true, false, 8),
-  ('Oreo Shake', 'loaded cookie crunch milkshake', 'desserts-beverages', 206.00, NULL, true, false, false, false, 9),
-  ('Ferrero Rocher Shake', 'gourmet hazelnut chocolate indulgence', 'desserts-beverages', 275.00, NULL, true, false, true, true, 10)
+  -- 7. Cold Coffee & Shakes (Matching coffee-shakes category in src/data.ts)
+  ('Classic Cold Coffee', 'the iconic cold coffee of Adarsh Nagar', 'coffee-shakes', 137.00, NULL, true, false, true, true, 1),
+  ('Thick Cold Coffee with Ice Cream', 'vanilla scoop on thick cold coffee', 'coffee-shakes', 229.00, NULL, true, false, true, true, 2),
+  ('Thick Kit Kat Chocolate Coffee', 'crushed kit kat wafer blend', 'coffee-shakes', 206.00, NULL, true, false, true, false, 3),
+  ('Caramel Cold Coffee', 'rich buttery caramel swirl', 'coffee-shakes', 194.00, NULL, true, false, false, false, 4),
+  ('Thick Choco Coffee', 'double chocolate mocha', 'coffee-shakes', 229.00, NULL, true, false, false, false, 5),
+  ('Triple Chocolate Volcano Shake', 'ferraro series chocolate blast', 'coffee-shakes', 367.00, NULL, true, false, true, true, 6),
+  ('Kit Kat Masti Shake', 'topped with wafer fingers', 'coffee-shakes', 344.00, NULL, true, false, false, false, 7),
+  ('Sneaker Burst Shake', 'caramel peanut nougat shake', 'coffee-shakes', 344.00, NULL, true, false, false, false, 8),
+  ('Oreo Blast Shake', 'thick crushed oreo shake', 'coffee-shakes', 321.00, NULL, true, false, false, true, 9),
+  ('Belgium Chocolate Shake', 'gourmet dark belgium cocoa', 'coffee-shakes', 217.00, NULL, true, false, false, true, 10),
+  ('Rajwadi Shake', 'royal saffron dry fruit shake', 'coffee-shakes', 229.00, NULL, true, false, false, false, 11),
+  ('Keshar Pista Shake', 'rich saffron pistachio blend', 'coffee-shakes', 217.00, NULL, true, false, false, false, 12),
+
+  -- 8. Brownies & Hot Drinks (Matching desserts-hot category in src/data.ts)
+  ('Sizzling Brownie with Ice Cream', 'hot chocolate sauce over vanilla scoop', 'desserts-hot', 252.00, NULL, true, false, true, true, 1),
+  ('Sizzling Boat', 'grand sizzling dessert boat', 'desserts-hot', 401.00, NULL, true, false, true, false, 2),
+  ('Triple Truppel', 'three-tier chocolate dessert', 'desserts-hot', 298.00, NULL, true, false, false, false, 3),
+  ('Choco Brownie', 'warm fudge brownie', 'desserts-hot', 171.00, NULL, true, false, false, false, 4),
+  ('Chocolate Cheese Sandwich', 'molten chocolate & melted cheese', 'desserts-hot', 160.00, NULL, true, false, true, false, 5),
+  ('Chocolate Oreo Sandwich', 'crispy oreos inside toasted bread', 'desserts-hot', 183.00, NULL, true, false, false, false, 6),
+  ('Hot Coffee', 'freshly brewed hot cappuccino', 'desserts-hot', 79.00, NULL, true, false, false, true, 7),
+  ('Hot Chocolate', 'rich melted cocoa milk', 'desserts-hot', 171.00, NULL, true, false, false, false, 8),
+  ('Ginger Tea', 'fresh adrak chai', 'desserts-hot', 68.00, NULL, true, false, false, false, 9),
+  ('Regular Tea', 'comfort masala tea', 'desserts-hot', 56.00, NULL, true, false, false, false, 10),
+  ('Black Coffee', 'strong double espresso shot', 'desserts-hot', 56.00, NULL, true, false, false, false, 11)
 ) AS v(name, note, category, price, size_price, is_veg, is_spicy, is_famous, is_pick, sort_order)
-WHERE NOT EXISTS (SELECT 1 FROM public.menu_items LIMIT 1);
+WHERE NOT EXISTS (SELECT 1 FROM public.menu_items LIMIT 1)
+ON CONFLICT (name, category) DO NOTHING;

@@ -48,7 +48,7 @@ export async function submitBooking(rawInput: unknown): Promise<BookingResult> {
         p_event_type: pkgName,
         p_package_id: data.pkg,
         p_message: data.notes || null,
-        p_ip_hash: "web-client",
+        p_ip_hash: null,
       });
 
       if (rpcErr) {
