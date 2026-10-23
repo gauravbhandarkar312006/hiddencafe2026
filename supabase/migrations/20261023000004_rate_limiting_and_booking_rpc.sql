@@ -18,6 +18,7 @@ CREATE OR REPLACE FUNCTION public.cleanup_expired_rate_limits()
 RETURNS void
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
     DELETE FROM public.rate_limits WHERE expires_at < now();
 $$;
@@ -31,6 +32,7 @@ CREATE OR REPLACE FUNCTION public.check_rate_limit(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_record RECORD;
@@ -56,6 +58,11 @@ BEGIN
 END;
 $$;
 
+-- Revoke public execution of internal rate limiting functions
+REVOKE ALL ON FUNCTION public.cleanup_expired_rate_limits() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.check_rate_limit(TEXT, INTEGER, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.check_rate_limit(TEXT, INTEGER, INTEGER) TO service_role;
+
 -- 2. Secure Server-Side Public Booking RPC Function
 -- This function runs with SECURITY DEFINER to allow anonymous public customers
 -- to submit bookings through strict server-side validation and rate limits,
@@ -74,7 +81,7 @@ CREATE OR REPLACE FUNCTION public.submit_party_booking(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_clean_name TEXT;
