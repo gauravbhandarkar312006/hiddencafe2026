@@ -9,7 +9,7 @@ const NAV_LINKS = [
   { href: "#reviews", label: "Reviews" },
 ];
 
-export default function Visit() {
+export default function Visit({ onOpenStaffPortal }: { onOpenStaffPortal?: () => void }) {
   const today = (new Date().getDay() + 6) % 7; // Monday = 0
 
   return (
@@ -221,7 +221,21 @@ export default function Visit() {
           </div>
 
           <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-latte/8 pt-6 text-[12.5px] text-dune">
-            <p>© 2026 Hidden Café & Restro · Adarsh Nagar, Jalgaon. All cravings reserved.</p>
+            <p>
+              © 2026 Hidden Café & Restro · Adarsh Nagar, Jalgaon. All cravings reserved.
+              {onOpenStaffPortal && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={onOpenStaffPortal}
+                    className="inline-flex items-center gap-1 font-semibold text-dune/80 hover:text-caramel transition underline underline-offset-2"
+                  >
+                    🔒 Staff Access
+                  </button>
+                </>
+              )}
+            </p>
             <div className="flex items-center gap-5">
               <p className="flex items-center gap-1.5">
                 Brewed with <BeanIcon className="h-3.5 w-3.5 text-caramel" /> in Jalgaon

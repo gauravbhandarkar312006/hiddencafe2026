@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
-import { MENU, type MenuItem, WHATSAPP } from "../data";
+import { useState, useMemo, useEffect } from "react";
+import { MENU as STATIC_MENU, type MenuItem, WHATSAPP } from "../data";
 import { Reveal, SectionHeading, VegMark, StarIcon, FlameIcon, WhatsAppIcon } from "./ui";
 import { useToast } from "./Toast";
 import { cn } from "../utils/cn";
+import { fetchLiveMenu } from "../lib/menuService";
 
 function ItemRow({ item, index }: { item: MenuItem; index: number }) {
   const { toast } = useToast();
@@ -59,11 +60,21 @@ function ItemRow({ item, index }: { item: MenuItem; index: number }) {
 }
 
 export default function MenuSection() {
-  const [activeId, setActiveId] = useState(MENU[0].id);
+  const [categories, setCategories] = useState(STATIC_MENU);
+  const [activeId, setActiveId] = useState(STATIC_MENU[0].id);
   const [menuView, setMenuView] = useState<"interactive" | "brochure">("interactive");
   const [activePdfPage, setActivePdfPage] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const active = MENU.find((c) => c.id === activeId) ?? MENU[0];
+
+  useEffect(() => {
+    fetchLiveMenu().then((res) => {
+      if (res.isLive) {
+        setCategories(res.categories);
+      }
+    });
+  }, []);
+
+  const active = categories.find((c) => c.id === activeId) ?? categories[0];
 
   const filteredItems = useMemo(() => {
     if (!search.trim()) return active.items;
@@ -186,7 +197,7 @@ export default function MenuSection() {
               {/* Category tabs */}
               <Reveal delay={100}>
                 <div className="flex flex-wrap gap-2">
-                  {MENU.map((cat) => {
+                  {categories.map((cat) => {
                     const isActive = cat.id === activeId;
                     return (
                       <button

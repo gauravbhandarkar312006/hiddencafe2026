@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { PACKAGES, ADDONS, WHATSAPP, PHONE_TEL, PHONE_DISPLAY } from "../data";
+import { PACKAGES, ADDONS, PHONE_TEL, PHONE_DISPLAY } from "../data";
 import { Reveal, Img, SectionHeading, SparkIcon, PhoneIcon, WhatsAppIcon, BalloonIcon, CakeIcon } from "./ui";
 import { useToast } from "./Toast";
 import { cn } from "../utils/cn";
+import { submitBooking } from "../lib/bookingService";
 
 const PARTY_SOURCES = ["/images/birthday-setup.jpg", "/images/birthday-setup.png"];
 
@@ -14,6 +15,7 @@ type FormState = {
   guests: string;
   pkg: string;
   notes: string;
+  hp: string;
 };
 
 const EMPTY: FormState = {
@@ -24,6 +26,7 @@ const EMPTY: FormState = {
   guests: "",
   pkg: "glow",
   notes: "",
+  hp: "",
 };
 
 function ScatterPolaroid({
@@ -63,6 +66,7 @@ function ScatterPolaroid({
 
 export default function Parties() {
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
   const { toast } = useToast();
@@ -80,39 +84,43 @@ export default function Parties() {
     document.getElementById("book-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.date || !form.guests) {
-      setError("Please fill your name, date and guest count — the rest is optional.");
+    setError("");
+
+    if (!form.name.trim() || !form.phone.trim() || !form.date || !form.guests) {
+      const msg = "Please enter your name, contact phone, booking date and guest count.";
+      setError(msg);
       toast({
-        title: "Required Fields Missing",
-        description: "Please enter your name, date, and estimated guest count.",
+        title: "Missing Details",
+        description: msg,
         type: "info",
       });
       return;
     }
-    setError("");
-    const pkgName = PACKAGES.find((p) => p.id === form.pkg)?.name ?? "Just the décor";
-    const msg = [
-      "Hi Hidden Café! I'd like to book a party 🎈",
-      `• Name: ${form.name}`,
-      form.phone ? `• Phone: ${form.phone}` : "",
-      `• Date: ${form.date}`,
-      `• Time slot: ${form.slot}`,
-      `• Guests: ${form.guests}`,
-      `• Package: ${pkgName}`,
-      form.notes ? `• Notes: ${form.notes}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-    window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
-    setSent(true);
-    toast({
-      title: "Booking Request Sent! 🎈",
-      description: "Opening WhatsApp with your booking details. We will confirm your slot shortly!",
-      type: "party",
-    });
-    window.setTimeout(() => setSent(false), 4000);
+
+    setSubmitting(true);
+    try {
+      const result = await submitBooking(form);
+      setSent(true);
+      window.open(result.whatsappUrl, "_blank", "noopener,noreferrer");
+      toast({
+        title: result.bookingId ? "Booking Saved & Forwarded! 🎈" : "Opening WhatsApp 🎈",
+        description: result.message,
+        type: "party",
+      });
+      window.setTimeout(() => setSent(false), 5000);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to submit booking.";
+      setError(errorMsg);
+      toast({
+        title: "Booking Error",
+        description: errorMsg,
+        type: "info",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const inputCls =
@@ -294,28 +302,48 @@ export default function Parties() {
                 </div>
               </div>
 
-              <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
+              <form id="book-form" onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
+                {/* Honeypot field for bot trapping (invisible to normal users) */}
+                <input
+                  type="text"
+                  name="hp"
+                  value={form.hp}
+                  onChange={(e) => set("hp")(e.target.value)}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  className="hidden"
+                  aria-hidden="true"
+                />
+
                 <div>
                   <label htmlFor="bk-name" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
                     Your name *
                   </label>
-                  <input id="bk-name" className={inputCls} placeholder="Aarav Sharma" value={form.name} onChange={(e) => set("name")(e.target.value)} />
+                  <input id="bk-name" className={inputCls} placeholder="Aarav Sharma" value={form.name} onChange={(e) => set("name")(e.target.value)} required maxLength={100} />
                 </div>
                 <div>
                   <label htmlFor="bk-phone" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
-                    Phone / WhatsApp
+                    Phone / WhatsApp *
                   </label>
-                  <input id="bk-phone" className={inputCls} placeholder="98XXX XXXXX" inputMode="tel" value={form.phone} onChange={(e) => set("phone")(e.target.value)} />
+                  <input id="bk-phone" className={inputCls} placeholder="98XXXXXXXX" inputMode="tel" value={form.phone} onChange={(e) => set("phone")(e.target.value)} required maxLength={20} />
                 </div>
                 <div>
                   <label htmlFor="bk-date" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
                     Date *
                   </label>
-                  <input id="bk-date" type="date" className={inputCls} value={form.date} onChange={(e) => set("date")(e.target.value)} />
+                  <input
+                    id="bk-date"
+                    type="date"
+                    min={new Date().toISOString().split("T")[0]}
+                    className={inputCls}
+                    value={form.date}
+                    onChange={(e) => set("date")(e.target.value)}
+                    required
+                  />
                 </div>
                 <div>
                   <label htmlFor="bk-slot" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
-                    Time slot
+                    Time slot *
                   </label>
                   <select id="bk-slot" className={inputCls} value={form.slot} onChange={(e) => set("slot")(e.target.value)}>
                     <option>Lunch (12 – 3 PM)</option>
@@ -327,7 +355,7 @@ export default function Parties() {
                   <label htmlFor="bk-guests" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
                     Guests *
                   </label>
-                  <input id="bk-guests" className={inputCls} placeholder="e.g. 8" inputMode="numeric" value={form.guests} onChange={(e) => set("guests")(e.target.value)} />
+                  <input id="bk-guests" className={inputCls} placeholder="e.g. 8" inputMode="numeric" value={form.guests} onChange={(e) => set("guests")(e.target.value)} required min={1} max={200} />
                 </div>
                 <div>
                   <label htmlFor="bk-pkg" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
@@ -347,19 +375,20 @@ export default function Parties() {
                   <label htmlFor="bk-notes" className="mb-1.5 block text-[11px] font-extrabold tracking-[0.18em] text-dune uppercase">
                     Theme, colours, surprises…
                   </label>
-                  <textarea id="bk-notes" rows={3} className={cn(inputCls, "resize-none")} placeholder="Rose-gold balloons, her favourite playlist, cake at 8 sharp…" value={form.notes} onChange={(e) => set("notes")(e.target.value)} />
+                  <textarea id="bk-notes" rows={3} maxLength={1000} className={cn(inputCls, "resize-none")} placeholder="Rose-gold balloons, her favourite playlist, cake at 8 sharp…" value={form.notes} onChange={(e) => set("notes")(e.target.value)} />
                 </div>
                 {error && <p className="text-[13px] font-bold text-roseneon sm:col-span-2">{error}</p>}
                 <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
                   <button
                     type="submit"
-                    className="group inline-flex items-center gap-3 rounded-full bg-rosedeep px-7 py-4 text-sm font-bold tracking-[0.08em] text-foam uppercase transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#8a3a45]"
+                    disabled={submitting}
+                    className="group inline-flex items-center gap-3 rounded-full bg-rosedeep px-7 py-4 text-sm font-bold tracking-[0.08em] text-foam uppercase transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#8a3a45] disabled:opacity-60 disabled:hover:translate-y-0"
                   >
                     <WhatsAppIcon className="h-5 w-5 transition-transform duration-300 group-hover:rotate-12" />
-                    Send on WhatsApp
+                    {submitting ? "Securing Booking..." : "Send on WhatsApp"}
                   </button>
                   <p className="text-[13px] text-dune" role="status">
-                    {sent ? "Opening WhatsApp — see you there ✳" : "Replies usually within the hour, 10 AM – 10 PM."}
+                    {sent ? "Booking processed & opening WhatsApp — see you there ✳" : "Replies usually within the hour, 10 AM – 10 PM."}
                   </p>
                 </div>
               </form>
