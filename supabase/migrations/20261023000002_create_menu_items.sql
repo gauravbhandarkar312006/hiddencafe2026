@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS public.menu_items (
     CONSTRAINT chk_menu_price_positive CHECK (price >= 0),
     CONSTRAINT chk_menu_size_price_len CHECK (size_price IS NULL OR char_length(size_price) <= 120),
     CONSTRAINT chk_menu_note_len CHECK (note IS NULL OR char_length(note) <= 300),
+    CONSTRAINT chk_menu_image_url CHECK (image_url IS NULL OR (char_length(image_url) <= 500 AND image_url ~* '^https?://[^\s/$.?#].[^\s]*$')),
     CONSTRAINT uq_menu_item_name_category UNIQUE (name, category)
 );
 
@@ -157,5 +158,8 @@ SELECT * FROM (VALUES
   ('Regular Tea', 'comfort masala tea', 'desserts-hot', 56.00, NULL, true, false, false, false, 10),
   ('Black Coffee', 'strong double espresso shot', 'desserts-hot', 56.00, NULL, true, false, false, false, 11)
 ) AS v(name, note, category, price, size_price, is_veg, is_spicy, is_famous, is_pick, sort_order)
-WHERE NOT EXISTS (SELECT 1 FROM public.menu_items LIMIT 1)
 ON CONFLICT (name, category) DO NOTHING;
+
+-- NOTE FOR CAFÉ MANAGEMENT: All 92 catalog items and prices seeded above reflect
+-- the website's initial data. Each item, price, and category must be audited and verified
+-- against the café's official approved physical menu before live launch.

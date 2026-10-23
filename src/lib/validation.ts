@@ -3,31 +3,33 @@ import { z } from "zod";
 // Shared validation schema for party bookings
 export const BookingFormSchema = z.object({
   name: z
-    .string({ required_error: "Name is required" })
+    .string()
     .trim()
     .min(2, "Name must be at least 2 characters")
     .max(100, "Name cannot exceed 100 characters"),
   phone: z
-    .string({ required_error: "Contact number is required" })
+    .string()
     .trim()
     .regex(/^\+?[0-9\s\-]{10,20}$/, "Please enter a valid 10-digit mobile number"),
   date: z
-    .string({ required_error: "Date is required" })
+    .string()
     .refine((val) => {
       const d = new Date(val);
       if (isNaN(d.getTime())) return false;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return d >= today;
-    }, "Booking date cannot be in the past"),
+      const maxFuture = new Date();
+      maxFuture.setDate(maxFuture.getDate() + 365);
+      return d >= today && d <= maxFuture;
+    }, "Booking date must be between today and 365 days in advance"),
   slot: z
-    .string({ required_error: "Time slot is required" })
+    .string()
     .trim()
     .min(2, "Please choose a time slot")
     .max(60, "Invalid slot name"),
   guests: z
     .coerce
-    .number({ required_error: "Guest count is required" })
+    .number()
     .int("Guest count must be a whole number")
     .min(1, "At least 1 guest required")
     .max(200, "Maximum 200 guests accommodated"),

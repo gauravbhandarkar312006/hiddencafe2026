@@ -1,5 +1,7 @@
 import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 
 // Production Zod Schema matching database constraints & Edge Function
@@ -580,5 +582,134 @@ describe("Security & Validation Suite — Hidden Café", () => {
     assert.equal(tablePermissions.submit_party_booking_rpc.service_role.execute, true);
     // 6. Regular staff cannot modify staff_roles
     assert.equal(tablePermissions.staff_roles.authenticated_staff.insert, false);
+  });
+
+  it("22. Status-Only Updates: Staff cannot alter customer details or audit timestamps", () => {
+    // Simulate enforce_booking_update_restrictions() trigger logic
+    function simulateBookingUpdate(original, updateFields, isStaff) {
+      if (!isStaff) {
+        throw new Error("Unauthorized");
+      }
+      const immutableColumns = [
+        "id", "customer_name", "phone", "booking_date", "booking_time",
+        "guest_count", "event_type", "package_id", "message", "ip_hash", "created_at"
+      ];
+      for (const col of immutableColumns) {
+        if (col in updateFields && updateFields[col] !== original[col]) {
+          throw new Error(`Unauthorized: Staff are only permitted to update booking status. Field '${col}' cannot be modified.`);
+        }
+      }
+      return { ...original, ...updateFields };
+    }
+
+    const originalBooking = {
+      id: "uuid-1234",
+      customer_name: "Anita Roy",
+      phone: "+919876543210",
+      booking_date: "2026-11-01",
+      booking_time: "Evening",
+      guest_count: 8,
+      event_type: "Birthday",
+      package_id: "glow",
+      message: "Neon balloons",
+      ip_hash: "hash_original",
+      status: "pending",
+      created_at: "2026-10-23T10:00:00Z",
+    };
+
+    // 1. Permitted status update
+    const validUpdate = simulateBookingUpdate(originalBooking, { status: "confirmed" }, true);
+    assert.equal(validUpdate.status, "confirmed");
+    assert.equal(validUpdate.customer_name, "Anita Roy");
+
+    // 2. Prohibited customer name tamper
+    assert.throws(
+      () => simulateBookingUpdate(originalBooking, { status: "confirmed", customer_name: "Hacked Name" }, true),
+      /Staff are only permitted to update booking status/
+    );
+
+    // 3. Prohibited phone tamper
+    assert.throws(
+      () => simulateBookingUpdate(originalBooking, { phone: "+911111111111" }, true),
+      /Staff are only permitted to update booking status/
+    );
+
+    // 4. Prohibited IP hash tamper
+    assert.throws(
+      () => simulateBookingUpdate(originalBooking, { ip_hash: "forged_ip" }, true),
+      /Staff are only permitted to update booking status/
+    );
+  });
+
+  it("23. Menu Visibility: Public can only view available items; Staff can see full inventory", () => {
+    const mockInventory = [
+      { id: "1", name: "Mojito", category: "mocktails", price: 148, is_available: true },
+      { id: "2", name: "Seasonal Mango Cooler", category: "mocktails", price: 180, is_available: false },
+      { id: "3", name: "Peri Peri Twisty", category: "twisty-fries", price: 160, is_available: true },
+    ];
+
+    // Public visitor filter (matches RLS policy: is_available = true)
+    const publicView = mockInventory.filter((item) => item.is_available === true);
+    assert.equal(publicView.length, 2);
+    assert.equal(publicView.some((item) => item.name === "Seasonal Mango Cooler"), false);
+
+    // Staff filter (matches RLS policy: is_staff(auth.uid()))
+    const staffView = mockInventory; // Staff sees all items including out of stock
+    assert.equal(staffView.length, 3);
+    assert.equal(staffView.some((item) => item.name === "Seasonal Mango Cooler"), true);
+  });
+
+  it("24. Owner Role Management: Only owners can assign or modify staff roles", () => {
+    const auth = new MockStaffAuth();
+    auth.setRole("owner-1", "owner");
+    auth.setRole("manager-1", "manager");
+    auth.setRole("staff-1", "staff");
+
+    function assignRole(callerId, targetUserId, newRole) {
+      if (!auth.isOwner(callerId, callerId)) {
+        throw new Error("Unauthorized: Only café owners can assign or modify staff roles.");
+      }
+      auth.setRole(targetUserId, newRole);
+      return true;
+    }
+
+    // 1. Manager cannot assign roles
+    assert.throws(
+      () => assignRole("manager-1", "new-user-1", "staff"),
+      /Only café owners can assign or modify staff roles/
+    );
+
+    // 2. Regular staff cannot assign roles
+    assert.throws(
+      () => assignRole("staff-1", "new-user-2", "manager"),
+      /Only café owners can assign or modify staff roles/
+    );
+
+    // 3. Owner successfully assigns role
+    const success = assignRole("owner-1", "new-user-3", "staff");
+    assert.equal(success, true);
+    assert.equal(auth.isStaff("owner-1", "new-user-3"), true);
+  });
+
+  it("25. Secret Leakage Defense: Ensures service_role key is never present in frontend source files", () => {
+    function checkDir(dir) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          checkDir(fullPath);
+        } else if (/\.(ts|tsx|js|jsx|html)$/.test(entry.name)) {
+          const content = fs.readFileSync(fullPath, "utf-8");
+          // Check for service role key keywords in frontend code
+          assert.equal(
+            content.includes("SUPABASE_SERVICE_ROLE_KEY") && !fullPath.includes("supabase"),
+            false,
+            `Potential secret reference in frontend file: ${fullPath}`
+          );
+        }
+      }
+    }
+
+    checkDir("src");
   });
 });

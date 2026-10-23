@@ -103,10 +103,10 @@ END;
 $$;
 
 -- Least-Privilege Function Permissions:
--- Revoke all execution rights from PUBLIC / anon; grant only to authenticated and service_role.
-REVOKE ALL ON FUNCTION public.is_owner(UUID) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.is_staff(UUID) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.is_manager_or_owner(UUID) FROM PUBLIC;
+-- Revoke all execution rights from PUBLIC and anon; grant only to authenticated and service_role.
+REVOKE ALL ON FUNCTION public.is_owner(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.is_staff(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.is_manager_or_owner(UUID) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.is_owner(UUID) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.is_staff(UUID) TO authenticated, service_role;
@@ -124,8 +124,44 @@ GRANT SELECT ON TABLE public.staff_roles TO authenticated;
 GRANT ALL ON TABLE public.staff_roles TO service_role;
 
 REVOKE ALL ON TABLE public.party_bookings FROM PUBLIC, anon;
-GRANT SELECT, UPDATE, DELETE ON TABLE public.party_bookings TO authenticated;
+GRANT SELECT, DELETE ON TABLE public.party_bookings TO authenticated;
+-- Column-level privilege: Staff can ONLY update the 'status' column
+GRANT UPDATE (status) ON TABLE public.party_bookings TO authenticated;
 GRANT ALL ON TABLE public.party_bookings TO service_role;
+
+-- Trigger Function: Strictly prevent staff from modifying customer identity, phone, dates, or audit timestamps
+CREATE OR REPLACE FUNCTION public.enforce_booking_update_restrictions()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    -- Verify that immutable fields were NOT altered during status updates
+    IF (NEW.id IS DISTINCT FROM OLD.id OR
+        NEW.customer_name IS DISTINCT FROM OLD.customer_name OR
+        NEW.phone IS DISTINCT FROM OLD.phone OR
+        NEW.booking_date IS DISTINCT FROM OLD.booking_date OR
+        NEW.booking_time IS DISTINCT FROM OLD.booking_time OR
+        NEW.guest_count IS DISTINCT FROM OLD.guest_count OR
+        NEW.event_type IS DISTINCT FROM OLD.event_type OR
+        NEW.package_id IS DISTINCT FROM OLD.package_id OR
+        NEW.message IS DISTINCT FROM OLD.message OR
+        NEW.ip_hash IS DISTINCT FROM OLD.ip_hash OR
+        NEW.created_at IS DISTINCT FROM OLD.created_at) THEN
+        RAISE EXCEPTION 'Unauthorized: Staff are only permitted to update booking status. Customer details and audit timestamps cannot be modified.';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.enforce_booking_update_restrictions() FROM PUBLIC, anon;
+
+DROP TRIGGER IF EXISTS trg_enforce_booking_update_restrictions ON public.party_bookings;
+CREATE TRIGGER trg_enforce_booking_update_restrictions
+    BEFORE UPDATE ON public.party_bookings
+    FOR EACH ROW
+    EXECUTE FUNCTION public.enforce_booking_update_restrictions();
 
 -- 4. Policies for staff_roles
 -- Staff members can only view their own assigned role
