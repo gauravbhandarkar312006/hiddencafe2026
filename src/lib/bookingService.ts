@@ -34,35 +34,35 @@ export async function submitBooking(rawInput: unknown): Promise<BookingResult> {
 
   const whatsappUrl = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(whatsappLines.join("\n"))}`;
 
-  // 3. If Supabase is configured, submit to database via secure RPC
+  // 3. If Supabase is configured, submit through trusted Edge Function gateway
   let bookingId: string | undefined;
 
   if (isSupabaseConfigured) {
     try {
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc("submit_party_booking", {
-        p_customer_name: data.name,
-        p_phone: data.phone,
-        p_booking_date: data.date,
-        p_booking_time: data.slot,
-        p_guest_count: data.guests,
-        p_event_type: pkgName,
-        p_package_id: data.pkg,
-        p_message: data.notes || null,
-        p_ip_hash: null,
+      const { data: edgeRes, error: edgeErr } = await supabase.functions.invoke("create-booking", {
+        body: {
+          name: data.name,
+          phone: data.phone,
+          date: data.date,
+          slot: data.slot,
+          guests: data.guests,
+          pkg: pkgName,
+          notes: data.notes || "",
+          hp: data.hp || "",
+        },
       });
 
-      if (rpcErr) {
-        console.warn("[BookingService] Supabase RPC error:", rpcErr.message);
-        // Do not block customer from reaching WhatsApp if DB fails
-      } else if (rpcRes && typeof rpcRes === "object") {
-        const res = rpcRes as { success?: boolean; error?: string; booking_id?: string; message?: string };
+      if (edgeErr) {
+        console.warn("[BookingService] Edge Function notice:", edgeErr.message);
+      } else if (edgeRes && typeof edgeRes === "object") {
+        const res = edgeRes as { success?: boolean; error?: string; booking_id?: string; message?: string };
         if (res.success === false && res.error) {
           throw new Error(res.error);
         }
         bookingId = res.booking_id;
       }
     } catch (err) {
-      if (err instanceof Error && !err.message.includes("network")) {
+      if (err instanceof Error && !err.message.includes("network") && !err.message.includes("FunctionsFetchError")) {
         throw err;
       }
       console.warn("[BookingService] Fallback to direct WhatsApp booking:", err);
